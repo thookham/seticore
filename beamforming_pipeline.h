@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "src/backend/ComputeBackend.h"
 #include "hit_recorder.h"
 #include "raw_file_group.h"
 #include "util.h"
@@ -61,7 +62,9 @@ public:
                       float snr,
                       float max_drift,
                       int _fft_size,
-                      int num_fine_channels)
+                      int _fft_size,
+                      int num_fine_channels,
+                      ComputeBackend* backend)
     : raw_files(raw_files), output_dir(stripAnyTrailingSlash(output_dir)),
       recipe_filename(recipe_filename), num_bands(num_bands), sti(sti), snr(snr),
       max_drift(max_drift), num_bands_to_process(num_bands), record_hits(true),
@@ -69,7 +72,8 @@ public:
       telescope_id(_telescope_id == NO_TELESCOPE_ID
                    ? file_group.getTelescopeID() : _telescope_id),
       fft_size(_fft_size > 0 ? _fft_size
-               : calculateFFTSize(file_group.num_coarse_channels, num_fine_channels)) {
+               : calculateFFTSize(file_group.num_coarse_channels, num_fine_channels)),
+      backend(backend) {
   }
 
   void findHits();  
@@ -79,6 +83,7 @@ public:
   
 private:
   RawFileGroup file_group;
+  ComputeBackend* backend;
 
 public:
   const int telescope_id;

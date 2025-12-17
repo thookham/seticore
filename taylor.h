@@ -1,8 +1,11 @@
 #pragma once
 
+#ifdef SETICORE_CUDA
 #include <cuda.h>
+#endif
 
 #include "cuda_util.h"
+#include "util.h"
 
 using namespace std;
 
@@ -27,7 +30,7 @@ using namespace std;
   This code is based on the original kernel by Franklin Antonio, available at
     https://github.com/UCBerkeleySETI/dedopplerperf/blob/main/CudaTaylor5demo.cu
  */
-__host__ __device__ inline void
+HOST_DEVICE inline void
 taylorOneStepOneChannel(const float* source_buffer, float* target_buffer,
                         int chan, int num_timesteps, int num_source_channels,
                         int num_target_channels, int path_length, int drift_block) {
@@ -99,7 +102,7 @@ taylorOneStepOneChannel(const float* source_buffer, float* target_buffer,
   Checks range validity for source_buffer, but not for target buffer.
   For paths that are out of range, the contents of target_buffer are left unchanged.
  */
-__host__ __device__ inline void
+HOST_DEVICE inline void
 unmapDrift(const float* source_buffer, float* target_buffer, int num_timesteps,
            int time_offset, int chan, int chan_offset, int num_source_channels,
            int num_target_channels, int drift) {

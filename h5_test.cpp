@@ -5,6 +5,28 @@
 #include "h5_reader.h"
 #include "h5_writer.h"
 #include "util.h"
+#include <memory>
+
+#include "src/backend/ComputeBackend.h"
+#ifdef SETICORE_CUDA
+#include "src/backend/CudaBackend.h"
+#else
+#include "src/backend/CpuReferenceBackend.h"
+#endif
+
+#ifdef SETICORE_SYCL
+#include "src/backend/SyclBackend.h"
+#endif
+
+static unique_ptr<ComputeBackend> createBackend() {
+#ifdef SETICORE_CUDA
+  return unique_ptr<ComputeBackend>(new CudaBackend());
+#elif defined(SETICORE_SYCL)
+  return unique_ptr<ComputeBackend>(new SyclBackend());
+#else
+  return unique_ptr<ComputeBackend>(new CpuReferenceBackend());
+#endif
+}
 
 TEST_CASE("h5 write then read", "[h5]") {
   string dir = boost::filesystem::temp_directory_path().c_str();
@@ -52,7 +74,8 @@ TEST_CASE("h5 write then read", "[h5]") {
   REQUIRE(f.telescope_id == m.telescope_id);
 
   // Spot check data
-  FilterbankBuffer buffer(f.num_timesteps, f.coarse_channel_size);
+  auto backend = createBackend();
+  FilterbankBuffer buffer(f.num_timesteps, f.coarse_channel_size, backend.get());
   f.loadCoarseChannel(2, &buffer);
   REQUIRE(buffer.get(1, 3) == 123.0);
   

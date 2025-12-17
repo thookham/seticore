@@ -13,7 +13,7 @@ using namespace std;
 class MultiantennaBuffer: public ComplexBuffer {
  public:
   MultiantennaBuffer(int num_timesteps, int num_channels, int num_polarizations,
-                     int num_antennas);
+                     int num_antennas, ComputeBackend* backend);
 
   // No copying
   MultiantennaBuffer(const MultiantennaBuffer&) = delete;
@@ -26,7 +26,11 @@ class MultiantennaBuffer: public ComplexBuffer {
 
   // Causes a cuda sync so it's slow. Only useful for debugging or testing
   using ComplexBuffer::get;
+#ifdef SETICORE_CUDA
   thrust::complex<float> get(int time, int channel, int pol, int antenna) const;
+#else
+  complex<float> get(int time, int channel, int pol, int antenna) const;
+#endif
 
   // Copies a range of channels to another buffer.
   // Assumes that the range to copy is the entire width of the other buffer.

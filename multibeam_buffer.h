@@ -1,8 +1,11 @@
 #pragma once
 
+#ifdef SETICORE_CUDA
 #include <cuda.h>
 #include <cuda_runtime.h>
+#endif
 #include "filterbank_buffer.h"
+#include "src/backend/ComputeBackend.h"
 
 using namespace std;
 
@@ -25,11 +28,12 @@ class MultibeamBuffer {
       data[beam][time][freq]
    */
   float* data;
+  ComputeBackend* backend; // Added member
 
   // Create a managed buffer
   MultibeamBuffer(int num_beams, int num_timesteps, int num_channels,
-                  int num_write_timesteps);
-  MultibeamBuffer(int num_beams, int num_timesteps, int num_channels);  
+                  int num_write_timesteps, ComputeBackend* backend);
+  MultibeamBuffer(int num_beams, int num_timesteps, int num_channels, ComputeBackend* backend);  
 
   ~MultibeamBuffer();
 
@@ -56,7 +60,9 @@ class MultibeamBuffer {
 
 private:
   // This stream is just for prefetching.
+#ifdef SETICORE_CUDA
   cudaStream_t prefetch_stream;
+#endif
 
   void prefetchRange(int beam, int first_time, int last_time, int destinationDevice);
   

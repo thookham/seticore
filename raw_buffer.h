@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstdint>
+#include <cstddef>
+
 using namespace std;
 
 /*

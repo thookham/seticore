@@ -1,8 +1,10 @@
 #pragma once
 
 #include <condition_variable>
+#ifdef SETICORE_CUDA
 #include <cuda.h>
 #include <cuda_runtime.h>
+#endif
 #include <mutex>
 
 #include "raw_buffer.h"
@@ -52,6 +54,7 @@ class DeviceRawBuffer {
   // Return the state from ready to unused
   void release();
 
+#ifdef SETICORE_CUDA
   static void CUDART_CB staticCopyCallback(cudaStream_t stream,
                                            cudaError_t status,
                                            void *device_raw_buffer);
@@ -59,10 +62,13 @@ class DeviceRawBuffer {
   static void CUDART_CB staticRelease(cudaStream_t stream,
                                       cudaError_t status,
                                       void *device_raw_buffer);
+#endif
   
  private:
   // This stream is just for this raw buffer; the state tracks concurrency
+#ifdef SETICORE_CUDA
   cudaStream_t stream;
+#endif
 
   // Called when a copy completes
   void copyCallback();

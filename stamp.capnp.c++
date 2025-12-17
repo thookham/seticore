@@ -347,7 +347,7 @@ static const uint16_t m_ce98ac82349b1161[] = {14, 12, 2, 3, 15, 4, 11, 9, 10, 8,
 static const uint16_t i_ce98ac82349b1161[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19};
 const ::capnp::_::RawSchema s_ce98ac82349b1161 = {
   0xce98ac82349b1161, b_ce98ac82349b1161.words, 331, d_ce98ac82349b1161, m_ce98ac82349b1161,
-  1, 20, i_ce98ac82349b1161, nullptr, nullptr, { &s_ce98ac82349b1161, nullptr, nullptr, 0, 0, nullptr }
+  1, 20, i_ce98ac82349b1161, nullptr, nullptr, { &s_ce98ac82349b1161, nullptr, nullptr, 0, 0, nullptr }, false
 };
 #endif  // !CAPNP_LITE
 }  // namespace schemas
@@ -357,11 +357,15 @@ const ::capnp::_::RawSchema s_ce98ac82349b1161 = {
 
 
 // Stamp
+#if CAPNP_NEED_REDUNDANT_CONSTEXPR_DECL
 constexpr uint16_t Stamp::_capnpPrivate::dataWordSize;
 constexpr uint16_t Stamp::_capnpPrivate::pointerCount;
+#endif  // !CAPNP_NEED_REDUNDANT_CONSTEXPR_DECL
 #if !CAPNP_LITE
+#if CAPNP_NEED_REDUNDANT_CONSTEXPR_DECL
 constexpr ::capnp::Kind Stamp::_capnpPrivate::kind;
 constexpr ::capnp::_::RawSchema const* Stamp::_capnpPrivate::schema;
+#endif  // !CAPNP_NEED_REDUNDANT_CONSTEXPR_DECL
 #endif  // !CAPNP_LITE
 
 

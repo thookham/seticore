@@ -42,3 +42,12 @@ These are the files where the actual alien-hunting math happens:
 ## Scaffold
 
 - See `SCAFFOLD/NOTES.md` for personal scratchpad.
+
+## Hardware Agnostic Support (Proposed)
+
+- **Goal**: Run on AMD, Intel, and Edge devices (NPU).
+- **Strategy**: Abstract CUDA kernels into a backend interface.
+- **Targets**:
+  - SYCL (Primary portable backend)
+  - HIP (AMD specific)
+  - Vulkan/OpenCL (Broad compatibility)

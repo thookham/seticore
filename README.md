@@ -33,19 +33,90 @@ Git clone this repo, then update submodules, then run the make scripts:
 ```
 git submodule init
 git submodule update
+### Building
+
+The build system now supports multiple backends:
+- **CPU (Default)**: Use if no GPU is available.
+- **CUDA**: For NVIDIA GPUs.
+- **SYCL**: For Intel GPUs (and other OneAPI targets).
+
+#### Standard Build (CPU)
+```bash
 meson setup build
-cd build
-meson compile
+meson compile -C build
 ```
 
-then run on an h5 file:
-
+#### CUDA Build
+Requires `nvcc`.
+```bash
+meson setup build -Dcuda=enabled
+meson compile -C build
 ```
-./seticore /path/to/your.h5
+
+#### SYCL Build
+Requires Intel OneAPI (`dpcpp` or `icpx`).
+```bash
+meson setup build -Dsycl=enabled
+meson compile -C build
+```
+
+```bash
+./unit_tests.sh
 ```
 
 It will behave roughly like turboseti. If something doesn't immediately work, try the more
 detailed instructions below.
+
+## Build
+
+Seticore uses the Meson build system. It supports multiple compute backends: **CPU (Default)**, **CUDA**, and **SYCL**.
+
+### Dependencies
+- **Common**: `cmake`, `g++`, `libboost-all-dev`, `libhdf5-dev`, `pkg-config`, `meson`, `ninja-build`.
+- **CPU**: `libfftw3-dev` (Optional, highly recommended for performance).
+- **CUDA**: NVIDIA CUDA Toolkit (for CUDA backend).
+- **SYCL**: Intel oneAPI Base Toolkit (dpcpp, oneMKL) (for SYCL backend).
+
+### Build Instructions
+
+#### 1. Setup Build Directory
+```bash
+meson setup build
+```
+
+#### 2. Configure Backends
+You can enable or disable backends using meson options.
+
+**Enable CUDA:**
+```bash
+meson configure build -Dcuda=enabled
+```
+(Requires `nvcc` on path).
+
+**Enable SYCL:**
+```bash
+meson configure build -Dsycl=enabled
+```
+(Requires `icpx` / `dpcpp` on path and oneMKL).
+
+**CPU Only:**
+```bash
+meson configure build -Dcuda=disabled -Dsycl=disabled
+```
+The CPU backend is always available as `CpuReferenceBackend`.
+
+#### 3. Compile
+```bash
+ninja -C build
+```
+
+### Usage
+The `seticore` executable will automatically select the best available backend (CUDA -> SYCL -> CPU) or can be configured via command line flags (if implemented) or build options.
+
+Run the raw file extraction tool:
+```bash
+./build/seticore --help
+```
 
 ## Fixing hdf5 plugin errors
 

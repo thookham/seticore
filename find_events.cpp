@@ -10,6 +10,28 @@
 #include "util.h"
 
 #include "cuda_util.h"
+#include <climits>
+#include <memory>
+#include "src/backend/ComputeBackend.h"
+#ifdef SETICORE_CUDA
+#include "src/backend/CudaBackend.h"
+#else
+#include "src/backend/CpuReferenceBackend.h"
+#endif
+
+#ifdef SETICORE_SYCL
+#include "src/backend/SyclBackend.h"
+#endif
+
+unique_ptr<ComputeBackend> createBackendFE() {
+#ifdef SETICORE_CUDA
+  return unique_ptr<ComputeBackend>(new CudaBackend());
+#elif defined(SETICORE_SYCL)
+  return unique_ptr<ComputeBackend>(new SyclBackend());
+#else
+  return unique_ptr<ComputeBackend>(new CpuReferenceBackend());
+#endif
+}
 
 using namespace std;
 
@@ -53,18 +75,9 @@ void removeZeroDriftHits(vector<DedopplerHit>* hits) {
               hits->end());
 }
 
-/*
-  Runs a dedoppler algorithm across files in a cadence, assuming they follow an
-  "ABACAD" pattern.
-  The results that appear in "on" but not "off" data are written to an .events file.
-
-  max_drift is the maximum drift we are looking for, in Hz/sec
-  snr_on is the minimum snr we require in the "on" data.
-  snr_off is the minimum snr that makes us throw out an event when it
-  occurs in the "off" data.
- */
 void findEvents(const vector<string>& input_filenames, const string& output_filename,
                 double max_drift, double snr_on, double snr_off) {
+  auto backend = createBackendFE();
   vector<shared_ptr<FilterbankFileReader> > files;
   vector<shared_ptr<Dedopplerer> > dedopplerers;
   vector<shared_ptr<FilterbankBuffer> > buffers;
@@ -76,12 +89,12 @@ void findEvents(const vector<string>& input_filenames, const string& output_file
     shared_ptr<Dedopplerer> dedopplerer(new Dedopplerer(file->num_timesteps,
                                                         file->coarse_channel_size,
                                                         file->foff, file->tsamp,
-                                                        file->has_dc_spike));
+                                                        file->has_dc_spike, backend.get()));
     dedopplerers.push_back(dedopplerer);
 
     shared_ptr<FilterbankBuffer>
       buffer(new FilterbankBuffer(roundUpToPowerOfTwo(file->num_timesteps),
-                                  file->coarse_channel_size));
+                                  file->coarse_channel_size, backend.get()));
     buffers.push_back(buffer);
   }
 

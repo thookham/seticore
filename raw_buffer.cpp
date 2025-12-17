@@ -1,7 +1,12 @@
 #include "raw_buffer.h"
 
 #include <assert.h>
+#include "util.h"
+#ifdef SETICORE_CUDA
 #include "cuda_util.h"
+#include <cuda_runtime.h>
+#endif
+#include <cstdlib>
 
 using namespace std;
 
@@ -20,12 +25,21 @@ RawBuffer::RawBuffer(int num_blocks, int num_antennas,
     timesteps_per_block(timesteps_per_block), npol(npol) {
   size = rawBufferSize(num_blocks, num_antennas, num_coarse_channels,
                             timesteps_per_block, npol);
+#ifdef SETICORE_CUDA
   cudaMallocHost(&data, size);
   checkCudaMalloc("RawBuffer", size);
+#else
+  data = (int8_t*) malloc(size);
+  if (!data && size > 0) fatal("RawBuffer malloc failed");
+#endif
 }
 
 RawBuffer::~RawBuffer() {
+#ifdef SETICORE_CUDA
   cudaFreeHost(data);
+#else
+  if (data) free(data);
+#endif
 }
 
 char* RawBuffer::blockPointer(int block) const {

@@ -1,0 +1,4 @@
+#include "util.h"
+
+// ... (Requires reading util.cpp first to know where to insert, but I can use replace/multi_replace if I read it first)
+// Wait, I should read util.cpp first to correctly modify it. I'll skip writing it blindly.

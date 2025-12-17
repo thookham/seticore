@@ -111,7 +111,7 @@ void BeamformingPipeline::findHits() {
   int coarse_channels_per_band = file_group.num_coarse_channels / num_bands;
   int nsamp = file_group.timesteps_per_block * blocks_per_batch;
 
-  Beamformer beamformer(0, fft_size, file_group.nants, recipe.nbeams,
+  Beamformer beamformer(0, backend, fft_size, file_group.nants, recipe.nbeams,
                         blocks_per_batch, coarse_channels_per_band, file_group.npol,
                         nsamp, sti);
 
@@ -273,7 +273,7 @@ void BeamformingPipeline::makeStamps() {
 
   string output_filename = fmt::format("{}/{}.stamps", output_dir,
                                        file_group.prefix);
-  StampExtractor extractor(file_group, fft_size, telescope_id, output_filename);
+  StampExtractor extractor(file_group, fft_size, telescope_id, output_filename, backend);
 
   int stamps_created = 0;
   vector<DedopplerHitGroup> groups = makeHitGroups(hits, margin);

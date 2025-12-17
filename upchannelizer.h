@@ -1,9 +1,10 @@
 #pragma once
 
 #include "complex_buffer.h"
-#include <cufft.h>
 #include "device_raw_buffer.h"
 #include "multiantenna_buffer.h"
+#include "src/backend/ComputeBackend.h"
+#include <memory>
 
 using namespace std;
 
@@ -18,8 +19,8 @@ using namespace std;
  */
 class Upchannelizer {
  public:
-  // The upchannelizer runs all its operations on one cuda stream.
-  const cudaStream_t stream;
+  // Backend handling execution
+  ComputeBackend* backend;
 
   // The factor for upchannelization. The frequency dimension will be expanded by
   // this amount, and the time dimension will be shrunk by this amount.
@@ -37,7 +38,7 @@ class Upchannelizer {
   const int num_polarizations;
   const int num_antennas;
   
-  Upchannelizer(cudaStream_t stream, int fft_size,
+  Upchannelizer(ComputeBackend* backend, int fft_size,
                 int num_input_timesteps, int num_coarse_channels,
                 int num_polarizations, int num_antennas);
   ~Upchannelizer();
@@ -56,5 +57,5 @@ class Upchannelizer {
   
  private:
   // The plan for the fft.
-  cufftHandle plan;
+  unique_ptr<FFTPlan> plan;
 };

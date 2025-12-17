@@ -1,8 +1,12 @@
 #include "device_raw_buffer.h"
 
 #include <assert.h>
-#include "cuda_util.h"
 #include "util.h"
+#ifdef SETICORE_CUDA
+#include "cuda_util.h"
+#endif
+#include <cstring>
+#include <iostream>
 
 using namespace std;
 
@@ -16,14 +20,23 @@ DeviceRawBuffer::DeviceRawBuffer(int num_blocks, int num_antennas,
     state(DeviceRawBufferState::unused) {
   size = sizeof(int8_t) * num_blocks * num_antennas * num_coarse_channels *
     timesteps_per_block * num_polarizations * 2;
+#ifdef SETICORE_CUDA
   cudaMalloc(&data, size);
   cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
   checkCuda("DeviceRawBuffer init");
+#else
+  data = (int8_t*) malloc(size);
+  if (!data && size > 0) fatal("DeviceRawBuffer malloc failed");
+#endif
 }
 
 DeviceRawBuffer::~DeviceRawBuffer() {
+#ifdef SETICORE_CUDA
   cudaFree(data);
   cudaStreamDestroy(stream);
+#else
+  if (data) free(data);
+#endif
 }
 
 // Should only be called from the producer thread
@@ -37,8 +50,14 @@ void DeviceRawBuffer::copyFromAsync(const RawBuffer& other) {
   lock.unlock();
   // Nobody waits on copying state, so no need to notify
   
+#ifdef SETICORE_CUDA
   cudaMemcpyAsync(data, other.data, size, cudaMemcpyHostToDevice, stream);
   cudaStreamAddCallback(stream, DeviceRawBuffer::staticCopyCallback, this, 0);
+#else
+  // CPU synchronous copy
+  memcpy(data, other.data, size);
+  copyCallback();
+#endif
 }
 
 void DeviceRawBuffer::waitUntilReady() {
@@ -63,6 +82,7 @@ void DeviceRawBuffer::release() {
   cv.notify_all();
 }
 
+#ifdef SETICORE_CUDA
 void CUDART_CB DeviceRawBuffer::staticCopyCallback(cudaStream_t stream,
                                                    cudaError_t status,
                                                    void *device_raw_buffer) {
@@ -82,6 +102,7 @@ void CUDART_CB DeviceRawBuffer::staticRelease(cudaStream_t stream,
   DeviceRawBuffer* object = (DeviceRawBuffer*) device_raw_buffer;
   object->release();
 }
+#endif
 
 void DeviceRawBuffer::copyCallback() {
   // Advance state to "ready"

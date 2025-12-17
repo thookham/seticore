@@ -1,13 +1,10 @@
 #pragma once
 
-#include <cuda.h>
-#include <string>
-#include <vector>
-
 #include "dedoppler_hit.h"
 #include "filterbank_buffer.h"
 #include "filterbank_metadata.h"
 #include "hit_recorder.h"
+#include "src/backend/ComputeBackend.h"
 
 using namespace std;
 
@@ -34,7 +31,7 @@ public:
   
   // Do not round num_timesteps before creating the Dedopplerer
   Dedopplerer(int num_timesteps, int num_channels, double foff, double tsamp,
-              bool has_dc_spike);
+              bool has_dc_spike, ComputeBackend* backend);
   ~Dedopplerer();
 
   void addIncoherentPower(const FilterbankBuffer& input, vector<DedopplerHit>& hits);
@@ -75,6 +72,8 @@ private:
   int drift_timesteps;
 
   // The difference in adjacent drift rates that we look for, in Hz/s
-  double drift_rate_resolution;  
+  double drift_rate_resolution;
+
+  ComputeBackend* backend;  
 };
 

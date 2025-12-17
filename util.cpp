@@ -37,9 +37,15 @@ string zeroPad(int n, int size) {
   return fmt::format(formatter, n);
 }
 
+#ifdef SETICORE_CUDA
 string cToS(thrust::complex<float> c) {
   return fmt::format("{:.6f} + {:.6f} i", c.real(), c.imag());
 }
+#else
+string cToS(complex<float> c) {
+  return fmt::format("{:.6f} + {:.6f} i", c.real(), c.imag());
+}
+#endif
 
 string stripAnyTrailingSlash(const string& s) {
   if (s.empty()) {
@@ -51,6 +57,7 @@ string stripAnyTrailingSlash(const string& s) {
   return s;
 }
 
+#ifdef SETICORE_CUDA
 void assertComplexEq(thrust::complex<float> c, float real, float imag) {
   if (abs(c.real() - real) > 0.001) {
     cerr << "c.real() = " << c.real() << " but real = " << real << endl;
@@ -61,6 +68,18 @@ void assertComplexEq(thrust::complex<float> c, float real, float imag) {
     exit(2);
   }
 }
+#else
+void assertComplexEq(complex<float> c, float real, float imag) {
+  if (abs(c.real() - real) > 0.001) {
+    cerr << "c.real() = " << c.real() << " but real = " << real << endl;
+    exit(2);
+  }
+  if (abs(c.imag() - imag) > 0.001) {
+    cerr << "c.imag() = " << c.imag() << " but imag = " << imag << endl;
+    exit(2);
+  }
+}
+#endif
 
 void assertFloatEq(float a, float b) {
   assertFloatEq(a, b, "");

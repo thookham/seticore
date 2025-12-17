@@ -1,5 +1,9 @@
 #include <assert.h>
+#ifdef SETICORE_CUDA
 #include "beamforming_pipeline.h"
+#include "src/backend/CudaBackend.h"
+#endif
+#include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/filesystem.hpp>
@@ -20,6 +24,10 @@ using namespace std;
 namespace po = boost::program_options;
 
 int beamformingMode(const po::variables_map& vm) {
+#ifndef SETICORE_CUDA
+  fatal("beamforming mode is only supported with CUDA enabled");
+  return 1;
+#else
   string input_dir = vm["input"].as<string>();
   string output_dir = vm["output"].as<string>();
 
@@ -56,10 +64,14 @@ int beamformingMode(const po::variables_map& vm) {
 
   auto groups = scanForRawFileGroups(input_dir);
   cout << "found " << pluralize(groups.size(), "group") << " of raw files.\n";
+  
+  // Beamforming currently assumes CUDA due to #ifdef SETICORE_CUDA
+  unique_ptr<ComputeBackend> backend(new CudaBackend());
+  
   for (auto group : groups) {
     BeamformingPipeline pipeline(group, output_dir, recipe_filename, num_bands,
                                  sti, telescope_id, snr, max_drift, fft_size,
-                                 num_fine_channels);
+                                 num_fine_channels, backend.get());
     if (vm.count("h5_dir")) {
       pipeline.h5_dir = vm["h5_dir"].as<string>();
     }
@@ -72,6 +84,7 @@ int beamformingMode(const po::variables_map& vm) {
     cout << fmt::format("time to make stamps: {:d}s\n", tstop - tmid);
   }
   return 0;
+#endif
 }
 
 int dedopplerMode(const po::variables_map& vm) {

@@ -3,7 +3,9 @@
 #include "beamformer.h"
 #include "hdf5.h"
 #include <string>
+#ifdef SETICORE_CUDA
 #include <thrust/complex.h>
+#endif
 #include <vector>
 
 using namespace std;

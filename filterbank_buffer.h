@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include "src/backend/ComputeBackend.h"
 
 using namespace std;
 
@@ -24,12 +25,13 @@ class FilterbankBuffer {
       data[time][freq]
    */
   float* data;
+  ComputeBackend* backend;
 
   // Create a managed buffer
-  FilterbankBuffer(int num_timesteps, int num_channels);
+  FilterbankBuffer(int num_timesteps, int num_channels, ComputeBackend* backend);
 
   // Create an unmanaged buffer, essentially a view on a pre-existing buffer
-  FilterbankBuffer(int num_timesteps, int num_channels, float* data);
+  FilterbankBuffer(int num_timesteps, int num_channels, float* data, ComputeBackend* backend);
   
   ~FilterbankBuffer();
 
@@ -48,5 +50,5 @@ class FilterbankBuffer {
 };
 
 // Fill a buffer with meaningless data for testing
-FilterbankBuffer makeNoisyBuffer(int num_timesteps, int num_channels);
+FilterbankBuffer makeNoisyBuffer(int num_timesteps, int num_channels, ComputeBackend* backend);
 

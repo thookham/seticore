@@ -1,13 +1,25 @@
 #pragma once
 
+#ifdef SETICORE_CUDA
 #include "cublas_v2.h"
+#include <cuda.h>
 #include <thrust/complex.h>
+#else
+#include <complex>
+namespace thrust {
+    template<typename T> using complex = std::complex<T>;
+}
+using cudaStream_t = void*;
+using cublasHandle_t = void*;
+#endif
+#include <vector>
 
 #include "complex_buffer.h"
 #include "device_raw_buffer.h"
 #include "multiantenna_buffer.h"
 #include "multibeam_buffer.h"
 #include "upchannelizer.h"
+#include "src/backend/ComputeBackend.h"
 
 using namespace std;
 
@@ -71,8 +83,9 @@ class Beamformer {
   
   // The beamformer runs all its operations on one stream.
   const cudaStream_t stream;
+  ComputeBackend* backend;
   
-  Beamformer(cudaStream_t stream, int fft_size, int num_antennas, int num_beams,
+  Beamformer(cudaStream_t stream, ComputeBackend* backend, int fft_size, int num_antennas, int num_beams,
              int num_blocks, int num_coarse_channels, int num_polarizations,
              int num_input_timesteps, int sti);
   ~Beamformer();

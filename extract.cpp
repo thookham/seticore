@@ -5,6 +5,16 @@
 #include "stamp_extractor.h"
 #include "util.h"
 
+#include <memory>
+#include "src/backend/ComputeBackend.h"
+#ifdef SETICORE_CUDA
+#include "src/backend/CudaBackend.h"
+#elif defined(SETICORE_SYCL)
+#include "src/backend/SyclBackend.h"
+#else
+#include "src/backend/CpuReferenceBackend.h"
+#endif
+
 using namespace std;
 
 namespace po = boost::program_options;
@@ -67,6 +77,15 @@ int main(int argc, char* argv[]) {
 
   RawFileGroup file_group(raw_files);
 
-  StampExtractor extractor(file_group, fft_size, telescope_id, output_filename);
+  unique_ptr<ComputeBackend> backend;
+#ifdef SETICORE_CUDA
+  backend = unique_ptr<ComputeBackend>(new CudaBackend());
+#elif defined(SETICORE_SYCL)
+  backend = unique_ptr<ComputeBackend>(new SyclBackend());
+#else
+  backend = unique_ptr<ComputeBackend>(new CpuReferenceBackend());
+#endif
+
+  StampExtractor extractor(file_group, fft_size, telescope_id, output_filename, backend.get());
   extractor.extract(nullptr, coarse_channel, start_channel, num_channels);
 }

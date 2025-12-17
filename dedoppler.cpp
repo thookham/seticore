@@ -1,85 +1,30 @@
 #include <algorithm>
 #include <assert.h>
-#include <cuda.h>
 #include <functional>
 #include <iostream>
 #include <math.h>
 #include <numeric>
 #include <vector>
+#include <limits.h>
 
-#include "cuda_util.h"
+// #include "cuda_util.h" // Removed
 #include "dedoppler.h"
-#include "taylor.h"
+// #include "taylor.h" // Removed, now accessed via backend
 #include "util.h"
+#include "dedoppler_hit.h"
 
-/*
-  Gather information about the top hits.
+using namespace std;
 
-  The eventual goal is for every frequency freq, we want:
-
-  top_path_sums[freq] to contain the largest path sum that starts at freq
-  top_drift_blocks[freq] to contain the drift block of that path
-  top_path_offsets[freq] to contain the path offset of that path
-
-  path_sums[path_offset][freq] contains one path sum.
-  (In row-major order.)
-  So we are just taking the max along a column and carrying some
-  metadata along as we find it. One thread per freq.
-
-  The function ignores data corresponding to invalid paths. See
-  comments in taylor.cu for details.
-*/
-__global__ void findTopPathSums(const float* path_sums, int num_timesteps, int num_freqs,
-                                int drift_block, float* top_path_sums,
-                                int* top_drift_blocks, int* top_path_offsets) {
-  int freq = blockIdx.x * blockDim.x + threadIdx.x;
-  if (freq < 0 || freq >= num_freqs) {
-    return;
-  }
-
-  for (int path_offset = 0; path_offset < num_timesteps; ++path_offset) {
-    // Check if the last frequency in this path is out of bounds
-    int last_freq = (num_timesteps - 1) * drift_block + path_offset + freq;
-    if (last_freq < 0 || last_freq >= num_freqs) {
-      // No more of these paths can be valid, either
-      return;
-    }
-
-    float path_sum = path_sums[num_freqs * path_offset + freq];
-    if (path_sum > top_path_sums[freq]) {
-      top_path_sums[freq] = path_sum;
-      top_drift_blocks[freq] = drift_block;
-      top_path_offsets[freq] = path_offset;
-    }
-  }
-}
-
-
-/*
-  Sum the columns of a two-dimensional array.
-  input is a (num_timesteps x num_freqs) array, stored in row-major order.
-  sums is an array of size num_freqs.
- */
-__global__ void sumColumns(const float* input, float* sums, int num_timesteps, int num_freqs) {
-  int freq = blockIdx.x * blockDim.x + threadIdx.x;
-  if (freq < 0 || freq >= num_freqs) {
-    return;
-  }
-  sums[freq] = 0.0;
-  for (int i = freq; i < num_timesteps * num_freqs; i += num_freqs) {
-    sums[freq] += input[i];
-  }
-}
-
+// Kernel implementations are now in backend
 
 /*
   The Dedopplerer encapsulates the logic of dedoppler search. In particular it manages
   the needed GPU memory so that we can reuse the same memory allocation for different searches.
  */
 Dedopplerer::Dedopplerer(int num_timesteps, int num_channels, double foff, double tsamp,
-                         bool has_dc_spike)
+                         bool has_dc_spike, ComputeBackend* backend)
     : num_timesteps(num_timesteps), num_channels(num_channels), foff(foff), tsamp(tsamp),
-      has_dc_spike(has_dc_spike), print_hits(false) {
+      has_dc_spike(has_dc_spike), print_hits(false), backend(backend) {
   assert(num_timesteps > 1);
   rounded_num_timesteps = roundUpToPowerOfTwo(num_timesteps);
   drift_timesteps = rounded_num_timesteps - 1;
@@ -87,40 +32,40 @@ Dedopplerer::Dedopplerer(int num_timesteps, int num_channels, double foff, doubl
   drift_rate_resolution = 1e6 * foff / (drift_timesteps * tsamp);
     
   // Allocate everything we need for GPU processing 
-  cudaMalloc(&buffer1, num_channels * rounded_num_timesteps * sizeof(float));
-  checkCuda("Dedopplerer buffer1 malloc");
+  backend->allocateDevice((void**)&buffer1, num_channels * rounded_num_timesteps * sizeof(float));
+  backend->verify_call("Dedopplerer buffer1 malloc");
 
-  cudaMalloc(&buffer2, num_channels * rounded_num_timesteps * sizeof(float));
-  checkCuda("Dedopplerer buffer2 malloc");
+  backend->allocateDevice((void**)&buffer2, num_channels * rounded_num_timesteps * sizeof(float));
+  backend->verify_call("Dedopplerer buffer2 malloc");
   
-  cudaMalloc(&gpu_column_sums, num_channels * sizeof(float));
-  cudaMallocHost(&cpu_column_sums, num_channels * sizeof(float));
-  checkCuda("Dedopplerer column_sums malloc");
+  backend->allocateDevice((void**)&gpu_column_sums, num_channels * sizeof(float));
+  backend->allocateHost((void**)&cpu_column_sums, num_channels * sizeof(float));
+  backend->verify_call("Dedopplerer column_sums malloc");
   
-  cudaMalloc(&gpu_top_path_sums, num_channels * sizeof(float));
-  cudaMallocHost(&cpu_top_path_sums, num_channels * sizeof(float));
-  checkCuda("Dedopplerer top_path_sums malloc");
+  backend->allocateDevice((void**)&gpu_top_path_sums, num_channels * sizeof(float));
+  backend->allocateHost((void**)&cpu_top_path_sums, num_channels * sizeof(float));
+  backend->verify_call("Dedopplerer top_path_sums malloc");
    
-  cudaMalloc(&gpu_top_drift_blocks, num_channels * sizeof(int));
-  cudaMallocHost(&cpu_top_drift_blocks, num_channels * sizeof(int));
-  checkCuda("Dedopplerer top_drift_blocks malloc");
+  backend->allocateDevice((void**)&gpu_top_drift_blocks, num_channels * sizeof(int));
+  backend->allocateHost((void**)&cpu_top_drift_blocks, num_channels * sizeof(int));
+  backend->verify_call("Dedopplerer top_drift_blocks malloc");
   
-  cudaMalloc(&gpu_top_path_offsets, num_channels * sizeof(int));
-  cudaMallocHost(&cpu_top_path_offsets, num_channels * sizeof(int));
-  checkCuda("Dedopplerer top_path_offsets malloc");
+  backend->allocateDevice((void**)&gpu_top_path_offsets, num_channels * sizeof(int));
+  backend->allocateHost((void**)&cpu_top_path_offsets, num_channels * sizeof(int));
+  backend->verify_call("Dedopplerer top_path_offsets malloc");
 }
 
 Dedopplerer::~Dedopplerer() {
-  cudaFree(buffer1);
-  cudaFree(buffer2);
-  cudaFree(gpu_column_sums);
-  cudaFreeHost(cpu_column_sums);
-  cudaFree(gpu_top_path_sums);
-  cudaFreeHost(cpu_top_path_sums);
-  cudaFree(gpu_top_drift_blocks);
-  cudaFreeHost(cpu_top_drift_blocks);
-  cudaFree(gpu_top_path_offsets);
-  cudaFreeHost(cpu_top_path_offsets);
+  backend->freeDevice(buffer1);
+  backend->freeDevice(buffer2);
+  backend->freeDevice(gpu_column_sums);
+  backend->freeHost(cpu_column_sums);
+  backend->freeDevice(gpu_top_path_sums);
+  backend->freeHost(cpu_top_path_sums);
+  backend->freeDevice(gpu_top_drift_blocks);
+  backend->freeHost(cpu_top_drift_blocks);
+  backend->freeDevice(gpu_top_path_offsets);
+  backend->freeHost(cpu_top_path_offsets);
 }
 
 // This implementation is an ugly hack
@@ -128,6 +73,8 @@ size_t Dedopplerer::memoryUsage() const {
   return num_channels * rounded_num_timesteps * sizeof(float) * 2
     + num_channels * (2 * sizeof(float) + 2 * sizeof(int));
 }
+
+
 
 /*
   Takes a bunch of hits that we found for coherent beams, and adds information
@@ -162,7 +109,7 @@ void Dedopplerer::addIncoherentPower(const FilterbankBuffer& input,
 
     if (drift_block > current_drift_block) {
       // We need to analyze a new drift block
-      taylor_sums = optimizedTaylorTree(input.data, buffer1, buffer2,
+      taylor_sums = backend->taylorTree(input.data, buffer1, buffer2,
                                         rounded_num_timesteps, num_channels,
                                         drift_block);
       current_drift_block = drift_block;
@@ -170,8 +117,13 @@ void Dedopplerer::addIncoherentPower(const FilterbankBuffer& input,
 
     long power_index = index2d(path_offset, hit.index, num_channels);
     assert(taylor_sums != nullptr);
-    cudaMemcpy(&hit.incoherent_power, taylor_sums + power_index,
-               sizeof(float), cudaMemcpyDeviceToHost);
+    
+    // cudaMemcpy(&hit.incoherent_power, taylor_sums + power_index, sizeof(float), cudaMemcpyDeviceToHost);
+    // Since hit.incoherent_power is a float on stack/heap (host), and taylor_sums is on device.
+    // backend->copyDeviceToHost expects (void* dst, const void* src, size_t size)
+    // Pointer arithmetic on device pointer `taylor_sums` is valid (it's just an address), 
+    // but dereferencing is not. We are passing the address.
+    backend->copyDeviceToHost(&hit.incoherent_power, taylor_sums + power_index, sizeof(float));
   }
 }
 
@@ -197,38 +149,41 @@ void Dedopplerer::search(const FilterbankBuffer& input,
   int min_drift_block = floor(-normalized_max_drift);
   int max_drift_block = floor(normalized_max_drift);
 
-  // This will create one cuda thread per frequency bin
-  int grid_size = (num_channels + CUDA_MAX_THREADS - 1) / CUDA_MAX_THREADS;
-
   // Zero out the path sums in between each coarse channel because
   // we pick the top hits separately for each coarse channel
-  cudaMemsetAsync(gpu_top_path_sums, 0, num_channels * sizeof(float));
+  backend->zeroDevice(gpu_top_path_sums, num_channels * sizeof(float));
 
-  sumColumns<<<grid_size, CUDA_MAX_THREADS>>>(input.data, gpu_column_sums,
-                                              rounded_num_timesteps, num_channels);
-  checkCuda("sumColumns");
+  // sumColumns<<<grid_size, CUDA_MAX_THREADS>>>(input.data, gpu_column_sums,
+  //                                             rounded_num_timesteps, num_channels);
+  backend->sumColumns(input.data, gpu_column_sums, rounded_num_timesteps, num_channels);
+  backend->verify_call("sumColumns");
   
   int mid = num_channels / 2;
 
   // Do the Taylor tree algorithm for each drift block
   for (int drift_block = min_drift_block; drift_block <= max_drift_block; ++drift_block) {
     // Calculate Taylor sums
-    const float* taylor_sums = optimizedTaylorTree(input.data, buffer1, buffer2,
+    const float* taylor_sums = backend->taylorTree(input.data, buffer1, buffer2,
                                                    rounded_num_timesteps, num_channels,
                                                    drift_block);
 
     // Track the best sums
-    findTopPathSums<<<grid_size, CUDA_MAX_THREADS>>>(taylor_sums, rounded_num_timesteps,
-                                                     num_channels, drift_block,
-                                                     gpu_top_path_sums,
-                                                     gpu_top_drift_blocks,
-                                                     gpu_top_path_offsets);
-    checkCuda("findTopPathSums");
+    // findTopPathSums<<<grid_size, CUDA_MAX_THREADS>>>(taylor_sums, rounded_num_timesteps,
+    //                                                  num_channels, drift_block,
+    //                                                  gpu_top_path_sums,
+    //                                                  gpu_top_drift_blocks,
+    //                                                  gpu_top_path_offsets);
+    backend->findTopPathSums(taylor_sums, rounded_num_timesteps, num_channels, drift_block,
+                             gpu_top_path_sums, gpu_top_drift_blocks, gpu_top_path_offsets);
+    
+    backend->verify_call("findTopPathSums");
   }
 
   // Now that we have done all the GPU processing for one coarse
   // channel, we can copy the data back to host memory.
   // These copies are not async, so they will synchronize to the default stream.
+  
+  /*
   cudaMemcpy(cpu_column_sums, gpu_column_sums,
              num_channels * sizeof(float), cudaMemcpyDeviceToHost);
   cudaMemcpy(cpu_top_path_sums, gpu_top_path_sums,
@@ -237,7 +192,13 @@ void Dedopplerer::search(const FilterbankBuffer& input,
              num_channels * sizeof(int), cudaMemcpyDeviceToHost);
   cudaMemcpy(cpu_top_path_offsets, gpu_top_path_offsets,
              num_channels * sizeof(int), cudaMemcpyDeviceToHost);
-  checkCuda("dedoppler d->h memcpy");
+  */
+  backend->copyDeviceToHost(cpu_column_sums, gpu_column_sums, num_channels * sizeof(float));
+  backend->copyDeviceToHost(cpu_top_path_sums, gpu_top_path_sums, num_channels * sizeof(float));
+  backend->copyDeviceToHost(cpu_top_drift_blocks, gpu_top_drift_blocks, num_channels * sizeof(int));
+  backend->copyDeviceToHost(cpu_top_path_offsets, gpu_top_path_offsets, num_channels * sizeof(int));
+  
+  backend->verify_call("dedoppler d->h memcpy");
   
   // Use the central 90% of the column sums to calculate standard deviation.
   // We don't need to do a full sort; we can just calculate the 5th,
@@ -260,7 +221,6 @@ void Dedopplerer::search(const FilterbankBuffer& input,
                   accum += (f - m) * (f - m);
                 });
   float std_dev = sqrt(accum / (last + 1 - first));
-
     
   // We consider two hits to be duplicates if the distance in their
   // frequency indexes is less than window_size. We only want to

@@ -5,6 +5,8 @@
 #include "raw_file_group.h"
 
 
+#include "src/backend/ComputeBackend.h"
+
 using namespace std;
 
 class StampExtractor {
@@ -16,6 +18,7 @@ class StampExtractor {
   const string final_filename;
   int fd;
   bool opened;
+  ComputeBackend* backend; // Added member
 
   // Open the output file.
   // No-op if it's already open.
@@ -25,7 +28,7 @@ class StampExtractor {
   
  public:
   StampExtractor(RawFileGroup& file_group, int fft_size, int telescope_id,
-                 const string& output_filename);
+                 const string& output_filename, ComputeBackend* backend); // Updated constructor
   ~StampExtractor();
 
   // No copying

@@ -8,6 +8,28 @@
 #include "run_dedoppler.h"
 #include "util.h"
 
+#include <memory>
+#include "src/backend/ComputeBackend.h"
+#ifdef SETICORE_CUDA
+#include "src/backend/CudaBackend.h"
+#else
+#include "src/backend/CpuReferenceBackend.h"
+#endif
+
+#ifdef SETICORE_SYCL
+#include "src/backend/SyclBackend.h"
+#endif
+
+unique_ptr<ComputeBackend> createBackendRD() {
+#ifdef SETICORE_CUDA
+  return unique_ptr<ComputeBackend>(new CudaBackend());
+#elif defined(SETICORE_SYCL)
+  return unique_ptr<ComputeBackend>(new SyclBackend());
+#else
+  return unique_ptr<ComputeBackend>(new CpuReferenceBackend());
+#endif
+}
+
 using namespace std;
 
 /*
@@ -29,14 +51,15 @@ using namespace std;
  */
 void runDedoppler(const string& input_filename, const string& output_filename,
                   double max_drift, double min_drift, double snr_threshold) {
+  auto backend = createBackendRD();
   auto file = loadFilterbankFile(input_filename);
   auto recorder = makeHitRecorder(output_filename, *file.get(), max_drift);
 
   Dedopplerer dedopplerer(file->num_timesteps, file->coarse_channel_size, file->foff,
-                          file->tsamp, file->has_dc_spike);
+                          file->tsamp, file->has_dc_spike, backend.get());
   dedopplerer.print_hits = true;
   FilterbankBuffer buffer(roundUpToPowerOfTwo(file->num_timesteps),
-                          file->coarse_channel_size);
+                          file->coarse_channel_size, backend.get());
   
   // Load and process one coarse channel at a time from the filterbank file
   vector<DedopplerHit> hits;

@@ -13,10 +13,10 @@
 using namespace std;
 
 StampExtractor::StampExtractor(RawFileGroup& file_group, int fft_size, int telescope_id,
-                               const string& output_filename)
+                               const string& output_filename, ComputeBackend* backend)
   : file_group(file_group), fft_size(fft_size), telescope_id(telescope_id),
     tmp_filename(output_filename + ".tmp"), final_filename(output_filename),
-    opened(false) {
+    opened(false), backend(backend) {
 }
 
 StampExtractor::~StampExtractor() {
@@ -57,21 +57,21 @@ void StampExtractor::extract(const DedopplerHit* hit, int coarse_channel,
   }
   int num_batches = file_group.num_blocks / blocks_per_batch;
   
-  Upchannelizer upchannelizer(0, fft_size,
+  Upchannelizer upchannelizer(backend, fft_size,
                               file_group.timesteps_per_block * blocks_per_batch,
                               1, file_group.npol, file_group.nants);
 
-  ComplexBuffer internal(upchannelizer.requiredInternalBufferSize());
+  ComplexBuffer internal(upchannelizer.requiredInternalBufferSize(), backend);
 
   MultiantennaBuffer fine(upchannelizer.numOutputTimesteps(),
                           upchannelizer.numOutputChannels(),
                           file_group.npol,
-                          file_group.nants);
+                          file_group.nants, backend);
 
   MultiantennaBuffer output(fine.num_timesteps * num_batches,
                             num_channels,
                             file_group.npol,
-                            file_group.nants);
+                            file_group.nants, backend);
 
   // Read just a single coarse channel, so one band equals one coarse channel
   RawFileGroupReader reader(file_group, file_group.num_coarse_channels,
@@ -91,7 +91,7 @@ void StampExtractor::extract(const DedopplerHit* hit, int coarse_channel,
     output_time += fine.num_timesteps;
   }
 
-  cudaDeviceSynchronize();
+  backend->synchronize();
 
   ::capnp::MallocMessageBuilder message;
   Stamp::Builder stamp = message.initRoot<Stamp>();
@@ -112,7 +112,7 @@ void StampExtractor::extract(const DedopplerHit* hit, int coarse_channel,
   auto data = stamp.getData();
 
   for (int i = 0; i < (int) output.size; ++i) {
-    thrust::complex<float> value = output.get(i);
+    auto value = output.get(i);
     data.set(2 * i, value.real());
     data.set(2 * i + 1, value.imag());
   }

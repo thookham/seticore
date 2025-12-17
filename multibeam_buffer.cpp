@@ -1,19 +1,24 @@
 #include "multibeam_buffer.h"
 
 #include <assert.h>
-
-#include "cuda_util.h"
-#include "filterbank_buffer.h"
 #include "util.h"
+#ifdef SETICORE_CUDA
+#include "cuda_util.h"
+#include <cuda_runtime.h>
+#endif
+#include "filterbank_buffer.h"
+#include <iostream>
+#include <cstring>
 
 using namespace std;
 
 MultibeamBuffer::MultibeamBuffer(int num_beams, int num_timesteps, int num_channels,
-                                 int num_write_timesteps)
+                                 int num_write_timesteps, ComputeBackend* backend)
   : num_beams(num_beams), num_timesteps(num_timesteps), num_channels(num_channels),
-    num_write_timesteps(num_write_timesteps) {
+    num_write_timesteps(num_write_timesteps), backend(backend) {
   assert(num_write_timesteps <= num_timesteps);
   size_t bytes = sizeof(float) * size();
+#ifdef SETICORE_CUDA
   cudaMallocManaged(&data, bytes);
   if (bytes > 2000000) {
     cout << "multibeam buffer memory: " << prettyBytes(bytes) << endl;
@@ -22,13 +27,20 @@ MultibeamBuffer::MultibeamBuffer(int num_beams, int num_timesteps, int num_chann
 
   cudaStreamCreateWithFlags(&prefetch_stream, cudaStreamNonBlocking);
   checkCuda("MultibeamBuffer stream init");
+#else
+  backend->allocateManaged((void**)&data, bytes);
+#endif
 }
 
-MultibeamBuffer::MultibeamBuffer(int num_beams, int num_timesteps, int num_channels)
-  : MultibeamBuffer(num_beams, num_timesteps, num_channels, num_timesteps) {}
+MultibeamBuffer::MultibeamBuffer(int num_beams, int num_timesteps, int num_channels, ComputeBackend* backend)
+  : MultibeamBuffer(num_beams, num_timesteps, num_channels, num_timesteps, backend) {}
 
 MultibeamBuffer::~MultibeamBuffer() {
+#ifdef SETICORE_CUDA
   cudaFree(data);
+#else
+  backend->freeDevice(data);
+#endif
 }
 
 long MultibeamBuffer::size() const {
@@ -38,7 +50,7 @@ long MultibeamBuffer::size() const {
 FilterbankBuffer MultibeamBuffer::getBeam(int beam) {
   assert(0 <= beam && beam < num_beams);
   int beam_size = num_timesteps * num_channels;
-  return FilterbankBuffer(num_timesteps, num_channels, data + beam * beam_size);
+  return FilterbankBuffer(num_timesteps, num_channels, data + beam * beam_size, backend);
 }
 
 void MultibeamBuffer::set(int beam, int time, int channel, float value) {
@@ -47,8 +59,10 @@ void MultibeamBuffer::set(int beam, int time, int channel, float value) {
 }
 
 float MultibeamBuffer::get(int beam, int time, int channel) {
+#ifdef SETICORE_CUDA
   cudaDeviceSynchronize();
   checkCuda("MultibeamBuffer get");
+#endif
   assert(beam < num_beams);
   assert(time < num_timesteps);
   assert(channel < num_channels);
@@ -58,8 +72,12 @@ float MultibeamBuffer::get(int beam, int time, int channel) {
 
 void MultibeamBuffer::zeroAsync() {
   size_t size = sizeof(float) * num_beams * num_timesteps * num_channels;
+#ifdef SETICORE_CUDA
   cudaMemsetAsync(data, 0, size);
   checkCuda("MultibeamBuffer zeroAsync");
+#else
+  memset(data, 0, size);
+#endif
 }
 
 void MultibeamBuffer::copyRegionAsync(int beam, int channel_offset,
@@ -68,11 +86,21 @@ void MultibeamBuffer::copyRegionAsync(int beam, int channel_offset,
   size_t source_pitch = sizeof(float) * num_channels;
   size_t width = sizeof(float) * output->num_channels;
   size_t dest_pitch = width;
+  
+#ifdef SETICORE_CUDA
   cudaMemcpy2DAsync(output->data, dest_pitch,
                     (void*) region_start, source_pitch,
                     width, num_timesteps,
                     cudaMemcpyDefault);
   checkCuda("MultibeamBuffer copyRegionAsync");
+#else
+  // CPU 2D copy
+  for (int i = 0; i < num_timesteps; ++i) {
+      void* d = (char*)output->data + i * dest_pitch;
+      const void* s = (char*)region_start + i * source_pitch;
+      memcpy(d, s, width);
+  }
+#endif
 }
 
 void MultibeamBuffer::hintWritingTime(int time) {
@@ -86,6 +114,7 @@ void MultibeamBuffer::hintReadingBeam(int beam) {
 // Truncates [first_time, last_time]
 void MultibeamBuffer::prefetchRange(int beam, int first_time, int last_time,
                                     int destination_device) {
+#ifdef SETICORE_CUDA
   if (first_time < 0) {
     first_time = 0;
   }
@@ -101,26 +130,13 @@ void MultibeamBuffer::prefetchRange(int beam, int first_time, int last_time,
   cudaMemPrefetchAsync(data + start_index, prefetch_size, destination_device,
                        prefetch_stream);
   checkCuda("MultibeamBuffer prefetchRange");
+#endif
 }
 
-/*
-  Prefetch so that the range of times from [first_time, last_time] and the
-  range of beams from [first_beam, last_beam] will be on the GPU.
-  The set of values to prefetch is like an intersection of vertical
-  and horizontal stripes.
-
-  For (time, beam) pairs that are adjacent to this set in memory, or
-  at the first or last times, we don't do any explicit
-  prefetching. For (time, beam) pairs that are not adjacent, we
-  prefetch them to the CPU. The adjacent regions are like a buffer
-  where CUDA can decide that they can go part on the CPU
-  and part on the GPU, since the CUDA library rounds prefetch ranges
-  to the nearest page size.
-
-  Truncates inputs that are out of range.
- */
 void MultibeamBuffer::prefetchStripes(int first_beam, int last_beam,
                                       int first_time, int last_time) {
+#ifdef SETICORE_CUDA
+  // ... existing implementation ...
   if (first_beam < 0) {
     first_beam = 0;
   }
@@ -154,4 +170,6 @@ void MultibeamBuffer::prefetchStripes(int first_beam, int last_beam,
     // Prefetch later times to the CPU, with a margin
     prefetchRange(beam, last_time + margin, num_timesteps - margin, cudaCpuDeviceId);
   }
+#endif
+  // On CPU, no-op or madvise? No-op is fine.
 }

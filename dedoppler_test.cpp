@@ -1,15 +1,41 @@
 #include "catch/catch.hpp"
 #include <iostream>
+#include <iostream>
 #include <vector>
+#include <memory>
+
+#include "src/backend/ComputeBackend.h"
+#ifdef SETICORE_CUDA
+#include "src/backend/CudaBackend.h"
+#else
+#include "src/backend/CpuReferenceBackend.h"
+#endif
+
+#ifdef SETICORE_SYCL
+#include "src/backend/SyclBackend.h"
+#endif
+
+using namespace std;
+
+static unique_ptr<ComputeBackend> createBackend() {
+#ifdef SETICORE_CUDA
+  return unique_ptr<ComputeBackend>(new CudaBackend());
+#elif defined(SETICORE_SYCL)
+  return unique_ptr<ComputeBackend>(new SyclBackend());
+#else
+  return unique_ptr<ComputeBackend>(new CpuReferenceBackend());
+#endif
+}
 
 #include "dedoppler.h"
 #include "filterbank_buffer.h"
 #include "filterbank_metadata.h"
 
 TEST_CASE("basic functionality", "[dedoppler]") {
+  auto backend = createBackend();
   int num_timesteps = 8;
   int num_channels = 1000;
-  FilterbankBuffer buffer(makeNoisyBuffer(num_timesteps, num_channels));
+  FilterbankBuffer buffer(makeNoisyBuffer(num_timesteps, num_channels, backend.get()));
   FilterbankMetadata metadata = FilterbankMetadata();
   
   // Draw a line drifting a few timesteps to the right
@@ -22,7 +48,7 @@ TEST_CASE("basic functionality", "[dedoppler]") {
   buffer.set(6, 73, 1.0);
   buffer.set(7, 73, 1.0);
 
-  Dedopplerer dedopplerer(num_timesteps, num_channels, 1.0, 1.0, false);
+  Dedopplerer dedopplerer(num_timesteps, num_channels, 1.0, 1.0, false, backend.get());
   vector<DedopplerHit> hits;
   dedopplerer.search(buffer, metadata, NO_BEAM, 555, 0.01, 0.01, 200.0, &hits);
   REQUIRE(hits.size() == 1);
