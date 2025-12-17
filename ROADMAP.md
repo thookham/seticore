@@ -15,7 +15,9 @@ These are the files where the actual alien-hunting math happens:
 
 ### 1. The Search Kernel (`dedoppler.cu`)
 
-* **Why**: The heart of the project. Implements the "dedoppler" algorithm on the GPU.
+- **Why**: The heart of the project. Implements the "dedoppler" algorithm on the GPU.
+- **Note**: This is **CUDA-only** (Nvidia). There is no current support for OpenCL (AMD/Intel) or HIP, unlike the older BOINC clients.
+
 - **Key Concepts**:
   - **Taylor Trees**: Referenced in `optimizedTaylorTree`, this is the efficient algorithm for summing paths through the spectrogram to detect drifting signals.
   - `findTopPathSums`: The kernel that aggregates the best signal paths.
@@ -23,14 +25,16 @@ These are the files where the actual alien-hunting math happens:
 
 ### 2. Event Finding (`find_events.cpp`)
 
-* **Why**: filters the raw "hits" into significant "events".
+- **Why**: filters the raw "hits" into significant "events".
+
 - **Key Logic**:
   - Post-processing of GPU results.
   - Standard deviation/Noise floor estimation.
 
 ### 3. Pipeline Glue (`main.cpp` / `run_dedoppler.cpp`)
 
-* **Why**: Shows how to run the engine.
+- **Why**: Shows how to run the engine.
+
 - **Key Logic**:
   - Loading `.h5` files (HDF5 format from telescopes).
   - Orchestrating the beamforming and dedoppler stages.
