@@ -3,6 +3,12 @@
 #include "beamforming_pipeline.h"
 #include "src/backend/CudaBackend.h"
 #endif
+#ifdef SETICORE_NPU
+#include "src/backend/NPUBackend.h"
+#endif
+#ifdef SETICORE_TPU
+#include "src/backend/TPUBackend.h"
+#endif
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/predicate.hpp>
@@ -24,8 +30,8 @@ using namespace std;
 namespace po = boost::program_options;
 
 int beamformingMode(const po::variables_map& vm) {
-#ifndef SETICORE_CUDA
-  fatal("beamforming mode is only supported with CUDA enabled");
+#if !defined(SETICORE_CUDA) && !defined(SETICORE_NPU) && !defined(SETICORE_TPU)
+  fatal("beamforming mode requires CUDA, NPU, or TPU enabled");
   return 1;
 #else
   string input_dir = vm["input"].as<string>();
@@ -65,8 +71,19 @@ int beamformingMode(const po::variables_map& vm) {
   auto groups = scanForRawFileGroups(input_dir);
   cout << "found " << pluralize(groups.size(), "group") << " of raw files.\n";
   
-  // Beamforming currently assumes CUDA due to #ifdef SETICORE_CUDA
-  unique_ptr<ComputeBackend> backend(new CudaBackend());
+  // Select Backend
+  unique_ptr<ComputeBackend> backend;
+
+#ifdef SETICORE_CUDA
+  backend.reset(new CudaBackend());
+  cout << "using CUDA backend\n";
+#elif defined(SETICORE_NPU)
+  backend.reset(new NPUBackend());
+  cout << "using NPU backend\n";
+#elif defined(SETICORE_TPU)
+  backend.reset(new TPUBackend());
+  cout << "using TPU backend\n";
+#endif
   
   for (auto group : groups) {
     BeamformingPipeline pipeline(group, output_dir, recipe_filename, num_bands,

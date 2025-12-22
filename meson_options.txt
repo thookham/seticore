@@ -1,2 +1,4 @@
 option('cuda', type : 'feature', value : 'auto', description : 'Enable CUDA support')
 option('sycl', type : 'feature', value : 'auto', description : 'Enable SYCL support')
+option('npu', type : 'feature', value : 'auto', description : 'Enable NPU support')
+option('tpu', type : 'feature', value : 'auto', description : 'Enable TPU support')

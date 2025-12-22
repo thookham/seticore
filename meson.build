@@ -41,6 +41,25 @@ if not sycl_opt.disabled()
     endif
 endif
 
+
+npu_opt = get_option('npu')
+have_npu = false
+
+if not npu_opt.disabled()
+    # Stub: Real logic would check for NPU SDK
+    have_npu = true
+    cpp_args += ['-DSETICORE_NPU']
+endif
+
+tpu_opt = get_option('tpu')
+have_tpu = false
+
+if not tpu_opt.disabled()
+    # Stub: Real logic would check for TPU libraries
+    have_tpu = true
+    cpp_args += ['-DSETICORE_TPU']
+endif
+
 cmake = import('cmake')
 
 fmt_dep = dependency('fmt', required: false)
@@ -121,9 +140,23 @@ cuda_srcs = [
     'taylor.cu',
 ]
 
+npu_srcs = [
+    'src/backend/NPUBackend.cpp',
+]
+
+tpu_srcs = [
+    'src/backend/TPUBackend.cpp',
+]
+
 srcs = common_srcs
 if have_cuda
     srcs += cuda_srcs
+endif
+if have_npu
+    srcs += npu_srcs
+endif
+if have_tpu
+    srcs += tpu_srcs
 endif
 
 common_tests = [
